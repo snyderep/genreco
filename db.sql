@@ -16,7 +16,7 @@ CREATE TABLE user_product_purchases (
 );
 CREATE INDEX user_product_purchases_ak1 ON user_product_purchases (account_id, pid);
 
-CREATE TABLE product_conversion (
+CREATE TABLE product_conversion_rate (
     account_id      INTEGER NOT NULL,
     pid             TEXT    NOT NULL,
     conversion_rate FLOAT   NOT NULL,

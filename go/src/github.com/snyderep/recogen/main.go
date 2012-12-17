@@ -1,9 +1,9 @@
 package main
 
 import (
-    "github.com/snyderep/recogen/database"
+	"github.com/snyderep/recogen/database"
 )
 
 func main() {
-    database.LoadAllData()
+	database.LoadAllData()
 }
