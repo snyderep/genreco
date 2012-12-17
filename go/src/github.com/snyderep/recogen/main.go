@@ -5,5 +5,5 @@ import (
 )
 
 func main() {
-    database.LoadProducts()
+    database.LoadAllData()
 }

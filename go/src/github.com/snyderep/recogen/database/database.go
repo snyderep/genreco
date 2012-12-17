@@ -40,10 +40,41 @@ func insertProduct(stmt *sql.Stmt, p *Product) (err error) {
     return
 }
 
+func deleteAllUserProductViews(trans *sql.Tx) (err error) {
+    _, err = trans.Exec("DELETE FROM user_product_views")
+    return
+}
+
+func getInsertUserProductViewStmt(trans *sql.Tx) (stmt *sql.Stmt) {
+    // note that postgresql uses $1, $2, etc while others use ?
+    s := "INSERT INTO user_product_views (account_id, monetate_id, pid, count) " +
+         "VALUES ($1, $2, $3, $4)"
+    var err error
+    stmt, err = trans.Prepare(s)
+    if err != nil {
+        panic(err)
+    }
+    return 
+}
+
+func insertUserProductView(stmt *sql.Stmt, accountId int64, monetateId string, pid string, count int64) (err error) {
+    _, err = stmt.Exec(accountId, monetateId, pid, count)
+    return
+}
+
 func openDB() (db *sql.DB) {
     db, err := sql.Open("postgres", "dbname=recogen sslmode=disable")
     if (err == nil) {
         return
     }
     panic(err)
+}
+
+func getDBTrans() (db *sql.DB, trans *sql.Tx) {
+    db = openDB()
+    trans, err := db.Begin()
+    if err != nil {
+        panic(err)
+    }
+    return
 }
