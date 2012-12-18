@@ -1,9 +1,23 @@
 package main
 
 import (
+    "flag"
 	"github.com/snyderep/recogen/database"
+	"github.com/snyderep/recogen/gene"
 )
 
+var loadData bool
+
+func init() {
+    flag.BoolVar(&loadData, "load", false, "load all data")
+}
+
 func main() {
-	database.LoadAllData()
+    flag.Parse()
+
+    if loadData {
+	    database.LoadAllData()
+    } else {
+        gene.Evolve(100, 10, 321, "2.1001298975.1355107162879")
+    }
 }

@@ -30,10 +30,10 @@ func getTabReader(file *os.File) (csvReader *csv.Reader) {
 }
 
 func LoadAllData() {
-	db := openDB()
+	db := OpenDB()
 	defer db.Close()
 
-    ch := make(chan string, 4)
+    ch := make(chan string, 10)
 
 	go LoadProducts(db, ch)
 	go LoadUserProductViews(db, ch)
@@ -291,9 +291,9 @@ func LoadProducts(db *sql.DB, ch chan string) {
 			panic(err)
 		}
 
-		p := &Product{accountId: accountId, pid: record[1], name: record[2], productUrl: record[3],
-			imageUrl: record[4], unitCost: 0.0, unitPrice: unitPrice, margin: 0.0,
-			marginRate: 0.0}
+		p := &Product{AccountId: accountId, Pid: record[1], Name: record[2], ProductUrl: record[3],
+			ImageUrl: record[4], UnitCost: 0.0, UnitPrice: unitPrice, Margin: 0.0,
+			MarginRate: 0.0}
 		err = insertProduct(stmt, p)
 		if err != nil {
 			panic(err)
