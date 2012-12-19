@@ -5,8 +5,13 @@ import (
     "fmt"
     "math/rand"
     "sort"
+    "time"
     "github.com/snyderep/recogen/database"
 )
+
+func init() {
+    rand.Seed( time.Now().UTC().UnixNano())    
+}
 
 type Population struct {
     genomes []*Genome
@@ -21,19 +26,65 @@ func (pop *Population) makeSelection() {
     }
     sort.Float64s(scores)
 
-    // choose the top 10% of scores
+    // choose the top 50% of scores
     topScores := make([]float64, 0)
-    topN := int(float64(len(scores)) * 0.1);
+    topN := int(float64(len(scores)) * 0.5);
     for i := len(scores) - 1; i >= len(scores) - topN; i-- {
         topScores = append(topScores, scores[i])        
     }
+    sort.Float64s(topScores)    
+    min := topScores[0]
+    max := topScores[len(topScores) - 1]
 
-    // eliminate any genomes that are not in the topN scores
+    // build a new list of genomes that are in topScores
+    selectedGenomes := make([]*Genome, 0)
+    fmt.Printf("min, max scores: %f, %f\n", min, max)
+    for i := 0; i < len(pop.genomes); i++ {
+        genome := pop.genomes[i]
+        if genome.score >= min && genome.score <= max {
+            selectedGenomes = append(selectedGenomes, genome)
+        }
+    }
+
+    pop.genomes = selectedGenomes
+}
+func (pop *Population) Display() {
+    for i := 0; i < len(pop.genomes); i++ {
+        genome := pop.genomes[i]
+        fmt.Printf("genome %d, score: %f, people: %d, products: %d\n", i, genome.score, 
+            genome.getPeopleCount(), genome.getProductsCount())
+    }
+}
+func (pop *Population) GetHighestScoringGenome() (bestGenome *Genome) {
+    for i := 0; i < len(pop.genomes); i++ {
+        genome := pop.genomes[i]
+        if bestGenome == nil || genome.score > bestGenome.score {
+            bestGenome = genome
+        }
+    }
+    return
+}
+func (pop *Population) DisplayFinal() {
+    fmt.Println("********** DONE **********")
+
+    bestGenome := pop.GetHighestScoringGenome()
+    for _, product := range bestGenome.getProducts() {
+        fmt.Println(product.String())
+    }
+    fmt.Printf("Score: %f\n", bestGenome.score)
+    for i := 0; i < len(bestGenome.traits); i++ {
+        fmt.Println(bestGenome.traits[i].String())
+    }
+}
+func (pop *Population) Append(genomes []*Genome) {
+    for i := 0; i < len(genomes); i++ {
+        pop.genomes = append(pop.genomes, genomes[i])
+    }        
 }
 
 type RecoSet struct {
-    products       []*database.Product
-    people         []*database.Person
+    products map[string]*database.Product
+    people   map[string]*database.Person
 }
 
 type Genome struct {
@@ -41,52 +92,73 @@ type Genome struct {
     score   float64
     traits  []Trait
 }
-func (g *Genome) checkFitness(db *sql.DB, accountId int64) {
-    var genScore float64
+func (g *Genome) checkFitness(db *sql.DB, accountId int64, originalPerson *database.Person) {
+    countScore := float64(0.0)
+    convScore := float64(0.0)
+    seenScore := float64(0.0)
 
     // adjust for the number of products 
-    if len(g.rs.products) == 0 {
-        genScore -= 50.0
-    } else if len(g.rs.products) < 15 {
-        genScore += 10.0
-    } else if len(g.rs.products) < 25 {
-        genScore += 15.0
+    productCount := g.getProductsCount()    
+    if productCount == 0 {
+        countScore -= 10.0
+    } else if productCount < 15 {
+        // fmt.Println("+= 5.0 for product count between 0 and 14")        
+        countScore += 5.0
+    } else if productCount < 25 {
+        // fmt.Println("+= 10.0 for product count between 15 and 24")
+        countScore += 10.0
     } else {
-        genScore -= 1.0
+        // fmt.Println("-1.0 for product count >= 25")        
+        countScore += 3.0
     }
 
-    // adjust for global conversion
-    for i := 0; i < len(g.rs.products); i++ {
-        globalConv := database.QueryGlobalConversion(db, accountId, g.rs.products[i])
-        if globalConv == 0.0 {
-            genScore -= 0.0
-        } else if globalConv <= 0.25 {
-            genScore += 1.0 
-        } else if globalConv <= 0.5 {
-            genScore += 2.0
-        } else if globalConv <= 0.75 {
-            genScore += 3.0
+    // adjust for global conversion and seen/unseen
+    for _, prod := range g.rs.products {
+        conv := database.QueryGlobalConversion(db, accountId, prod)
+        if conv == 0.0 {
+            convScore += 0.0
+        } else if conv <= 0.25 {
+            convScore += 1.0 
+        } else if conv <= 0.5 {
+            convScore += 3.0
+        } else if conv <= 0.75 {
+            convScore += 4.0
         } else {
-            genScore += 4.0
+            convScore += 6.0
+        }
+
+        if database.HasProductBeenSeenByPerson(db, accountId, originalPerson, prod) {
+            seenScore -= 0.5
+        } else {
+            seenScore += 1.0
         }
     }
-    
-    g.score = genScore
+    convScore = convScore / float64(g.getProductsCount())
+    seenScore = seenScore / float64(g.getProductsCount())
+
+    // adjust for seen/unseen 
+
+
+    g.score = (countScore * 0.3) + (convScore * 0.5) + (seenScore * 0.2)
 }
-
-type Trait interface {
-    getName() (string)
-    // *database.Person = the original person
-    update(*RecoSet, int64, *database.Person) 
+func (g *Genome) addRandomTrait() {
+    n := rand.Intn(len(allTraits))
+    t := allTraits[n]
+    g.traits = append(g.traits, t)        
 }
-
-var allTraits []Trait;
-
-func init() {
-    allTraits = append(allTraits, &NopTrait{})
-    allTraits = append(allTraits, &ResetWithViewedAndPurchasedTrait{})
-    allTraits = append(allTraits, &ResetWithViewedTrait{})
-    allTraits = append(allTraits, &ResetWithPurchasedTrait{})
+func (g *Genome) getPeopleCount() (count int) {
+    count = len(g.rs.people)
+    return
+}
+func (g * Genome) getPeople() (products map[string]*database.Person) {
+    return g.rs.people
+}
+func (g *Genome) getProductsCount() (count int) {
+    count = len(g.rs.products)
+    return
+}
+func (g * Genome) getProducts() (products map[string]*database.Product) {
+    return g.rs.products
 }
 
 func Evolve(maxPopulation int, maxGenerations int, accountId int64, monetateId string) {
@@ -104,21 +176,33 @@ func Evolve(maxPopulation int, maxGenerations int, accountId int64, monetateId s
             // apply the update of the last (current) trait for each genome
             genome := pop.genomes[i]
             currentTrait := genome.traits[len(genome.traits) - 1]
-            currentTrait.update(genome.rs, accountId, originalPerson)
-
-            // score the genome (apply the fitness function)
-            genome.checkFitness(db, accountId)
-            fmt.Printf("genome: %d, score = %f\n", i, genome.score)
+            currentTrait.update(genome.rs, accountId, originalPerson)            
+            genome.checkFitness(db, accountId, originalPerson)
         }
 
-        // select genomes to carry forward to the next generation 
-        pop.makeSelection()
+        pop.Display()                
 
-        // add new traits to the surviving genomes
+        if g == (maxGenerations - 1) {
+            pop.DisplayFinal()
+        } else {
+            // select genomes to carry forward to the next generation 
+            pop.makeSelection()
 
-        // fill in maxPopulation - the new number of genomes with a random population 
-        // pop.mergePopulations?
-        // the new population will already have a trait
+            // add new traits to the surviving genomes
+            for i := 0; i < len(pop.genomes); i++ {
+                pop.genomes[i].addRandomTrait()
+            }        
+
+            // have the successful ones reproduce to fill out the remainder of the population
+            childrenGenomes := make([]*Genome, 0)
+            for i := 0; i < (maxPopulation - len(pop.genomes)); i++ {
+                r1 := rand.Intn(len(pop.genomes))
+                r2 := rand.Intn(len(pop.genomes))
+                newGenome := reproduce(pop.genomes[r1], pop.genomes[r2])
+                childrenGenomes = append(childrenGenomes, newGenome)
+            }
+            pop.Append(childrenGenomes)
+        }
     }
 }
 
@@ -128,16 +212,24 @@ func makeRandomPopulation(size int, accountId int64, originalPerson *database.Pe
 
     pop = &Population{}
 
-    traits := make([]Trait, 1)
-    traits = append(traits, selectRandomTrait())
-
     genomes := make([]*Genome, size)
 
     for i := 0; i < size; i++ {
-        genome := &Genome{
-            rs: &RecoSet{}, 
-            score: 0.0,
-            traits: traits}
+        // seed with the original person
+        persMap := make(map[string]*database.Person)
+        persMap[originalPerson.MonetateId] = originalPerson
+
+        // seed with the original person's products
+        prodMap := make(map[string]*database.Product)
+        // TODO: Don't requery for every genome
+        products := database.QueryProductsViewedAndPurchased(db, accountId, originalPerson)
+        for i := 0; i < len(products); i++ {
+            prodMap[products[i].Pid] = products[i]
+        }        
+
+        rs := &RecoSet{products: prodMap, people: persMap,}
+        genome := &Genome{rs: rs,  score: 0.0}
+        genome.addRandomTrait()
         genomes[i] = genome
     }
 
@@ -146,67 +238,45 @@ func makeRandomPopulation(size int, accountId int64, originalPerson *database.Pe
     return
 }
 
-func selectRandomTrait() (trait Trait) {
-    n := rand.Intn(len(allTraits))
-    trait = allTraits[n]
+func reproduce(oneGenome *Genome, anotherGenome *Genome) (childGenome *Genome) {
+    childGenome = &Genome{score: 0.0}
+    childProducts := make(map[string]*database.Product)
+    childPeople := make(map[string]*database.Person)
+    childGenome.traits = make([]Trait, 0)
+
+    for _, p := range oneGenome.getProducts() {
+        coin := rand.Int31n(2)
+        if coin == 1 {childProducts[p.Pid] = p}
+    }
+    for _, p := range anotherGenome.getProducts() {
+        coin := rand.Int31n(2)
+        if coin == 1 {childProducts[p.Pid] = p}
+    }
+
+    for _, p := range oneGenome.getPeople() {
+        coin := rand.Int31n(2)
+        if coin == 1 {childPeople[p.MonetateId] = p}
+    }
+    for _, p := range anotherGenome.getPeople() {
+        coin := rand.Int31n(2)
+        if coin == 1 {childPeople[p.MonetateId] = p}
+    }
+
+    for i := 0; i < len(oneGenome.traits); i++ {
+        coin := rand.Int31n(2)
+        if coin == 1 {childGenome.traits = append(childGenome.traits, oneGenome.traits[i])}
+    }
+    for i := 0; i < len(anotherGenome.traits); i++ {
+        coin := rand.Int31n(2)
+        if coin == 1 {childGenome.traits = append(childGenome.traits, anotherGenome.traits[i])}
+    }
+    // we have to have at least one trait
+    if len(childGenome.traits) == 0 {
+        childGenome.traits = append(childGenome.traits, &NopTrait{})
+    }
+
+    childGenome.rs = &RecoSet{products: childProducts, people: childPeople,}
+
     return
 }
 
-type NopTrait struct {}
-func (t *NopTrait) getName() (string) {
-    return "nop" 
-}
-func (t *NopTrait) update(rs *RecoSet, accountId int64, origPerson *database.Person) {
-    // do nothing, this is a nop after all
-}
-
-type ResetWithViewedAndPurchasedTrait struct {}
-func (t *ResetWithViewedAndPurchasedTrait) getName() (string) {
-    return "reset with viewed and purchased"
-}
-// ignore any existing products or people and bootstrap from the original person
-func (t *ResetWithViewedAndPurchasedTrait) update(rs *RecoSet, accountId int64, origPerson *database.Person) {
-    db := database.OpenDB()
-    defer db.Close()
-
-    products := database.QueryProductsViewedAndPurchased(db, accountId, origPerson.MonetateId)
-    people := make([]*database.Person, 1)
-    people = append(people, origPerson)
-
-    rs.people = people
-    rs.products = products
-}
-
-type ResetWithViewedTrait struct {}
-func (t *ResetWithViewedTrait) getName() (string) {
-    return "reset with viewed"
-}
-// ignore any existing products or people and bootstrap from the original person
-func (t *ResetWithViewedTrait) update(rs *RecoSet, accountId int64, origPerson *database.Person) {
-    db := database.OpenDB()
-    defer db.Close()
-
-    products := database.QueryProductsViewed(db, accountId, origPerson.MonetateId)
-    people := make([]*database.Person, 1)
-    people = append(people, origPerson)
-
-    rs.people = people
-    rs.products = products
-}
-
-type ResetWithPurchasedTrait struct {}
-func (t *ResetWithPurchasedTrait) getName() (string) {
-    return "reset with viewed"
-}
-// ignore any existing products or people and bootstrap from the original person
-func (t *ResetWithPurchasedTrait) update(rs *RecoSet, accountId int64, origPerson *database.Person) {
-    db := database.OpenDB()
-    defer db.Close()
-
-    products := database.QueryProductsPurchased(db, accountId, origPerson.MonetateId)
-    people := make([]*database.Person, 1)
-    people = append(people, origPerson)
-
-    rs.people = people
-    rs.products = products
-}

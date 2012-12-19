@@ -18,6 +18,6 @@ func main() {
     if loadData {
 	    database.LoadAllData()
     } else {
-        gene.Evolve(100, 10, 321, "2.1001298975.1355107162879")
+        gene.Evolve(20, 100, 321, "2.1001298975.1355107162879")
     }
 }
