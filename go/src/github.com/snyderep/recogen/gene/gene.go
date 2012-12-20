@@ -29,7 +29,7 @@ func (pop *Population) evolve(maxPopulation int, maxGenerations int, accountId i
         for i := 0; i < len(pop.genomes); i++ {
             go func(ch chan bool, genome *Genome) {
                 // apply the update of the last (current) trait a genome                
-                genome.getCurrentTrait().update(genome.rs, accountId, originalPerson) 
+                genome.getCurrentTrait().update(db, genome.rs, accountId, originalPerson) 
                 genome.checkFitness(db, accountId, originalPerson)
 
                 ch <- true

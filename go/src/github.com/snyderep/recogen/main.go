@@ -2,8 +2,8 @@ package main
 
 import (
     "flag"
-	"github.com/snyderep/recogen/database"
-	"github.com/snyderep/recogen/gene"
+    "github.com/snyderep/recogen/database"
+    "github.com/snyderep/recogen/gene"
 )
 
 var loadData bool
