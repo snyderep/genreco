@@ -11,11 +11,11 @@ type Product struct {
 	Margin     float64
 	MarginRate float64
 }
-func (p *Product) String() (string) {
+
+func (p *Product) String() string {
 	return "pid: " + p.Pid + "\nname: " + p.Name + "\nurl: " + p.ProductUrl + "\nimage: " + p.ImageUrl
 }
 
 type Person struct {
-    MonetateId string
+	MonetateId string
 }
-

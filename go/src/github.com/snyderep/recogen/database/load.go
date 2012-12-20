@@ -33,18 +33,18 @@ func LoadAllData() {
 	db := OpenDB()
 	defer db.Close()
 
-    ch := make(chan string, 10)
+	ch := make(chan string, 10)
 
 	go LoadProducts(db, ch)
 	go LoadUserProductViews(db, ch)
 	go LoadUserProductPurchases(db, ch)
 	go LoadProductConversionRates(db, ch)
 
-    // drain the channel, there are 4 tasks to wait for
-    for i:= 0; i < 4; i++ {
-        task := <-ch // wait for one task to complete
-        fmt.Println(task + " done")
-    }
+	// drain the channel, there are 4 tasks to wait for
+	for i := 0; i < 4; i++ {
+		task := <-ch // wait for one task to complete
+		fmt.Println(task + " done")
+	}
 }
 
 func LoadUserProductViews(db *sql.DB, ch chan string) {
@@ -112,7 +112,7 @@ func LoadUserProductViews(db *sql.DB, ch chan string) {
 
 	trans.Commit()
 
-    ch <- "user product views" // signal that we're done
+	ch <- "user product views" // signal that we're done
 }
 
 func LoadUserProductPurchases(db *sql.DB, ch chan string) {
@@ -179,7 +179,7 @@ func LoadUserProductPurchases(db *sql.DB, ch chan string) {
 
 	trans.Commit()
 
-    ch <- "user product purchases" // signal that we're done
+	ch <- "user product purchases" // signal that we're done
 }
 
 func LoadProductConversionRates(db *sql.DB, ch chan string) {
@@ -247,7 +247,7 @@ func LoadProductConversionRates(db *sql.DB, ch chan string) {
 
 	trans.Commit()
 
-    ch <- "product conversion rates" // signal that we're done
+	ch <- "product conversion rates" // signal that we're done
 }
 
 func LoadProducts(db *sql.DB, ch chan string) {
@@ -302,5 +302,5 @@ func LoadProducts(db *sql.DB, ch chan string) {
 
 	trans.Commit()
 
-    ch <- "products" // signal that we're done
+	ch <- "products" // signal that we're done
 }
