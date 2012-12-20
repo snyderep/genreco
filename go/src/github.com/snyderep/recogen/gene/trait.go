@@ -19,6 +19,7 @@ func init() {
     allTraits = append(allTraits, &ProductsViewedByPeopleTrait{})  
     allTraits = append(allTraits, &RandomProductTrait{})
     allTraits = append(allTraits, &RandomProductDeleteTrait{})
+    allTraits = append(allTraits, &SoundAlikeProductTrait{})
 }
 
 type NopTrait struct {}
@@ -82,5 +83,27 @@ func (t *RandomProductDeleteTrait) update(rs *RecoSet, accountId int64, origPers
     for pid, _ := range rs.products {
         coin := rand.Intn(10)
         if coin == 0 {delete(rs.products, pid)}
+    }
+}
+
+type SoundAlikeProductTrait struct {}
+func (t *SoundAlikeProductTrait) String() (string) {
+    return "sound alike product"
+}
+func (t *SoundAlikeProductTrait) update(rs *RecoSet, accountId int64, origPerson *database.Person) {
+    db := database.OpenDB()
+    defer db.Close()
+
+    if len(rs.products) > 0 {
+        // take advantage of the fact that go randomizes the iteration order of map items
+        var inProduct *database.Product
+        for _, p := range rs.products {
+            inProduct = p
+            break
+        }
+        outProduct := database.QuerySoundAlikeProduct(db, accountId, inProduct)
+        if outProduct != nil {
+            rs.products[outProduct.Pid] = outProduct
+        }        
     }
 }

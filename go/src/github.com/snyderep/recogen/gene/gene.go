@@ -72,9 +72,7 @@ func (pop *Population) DisplayFinal() {
         fmt.Println(product.String())
     }
     fmt.Printf("Score: %f\n", bestGenome.score)
-    for i := 0; i < len(bestGenome.traits); i++ {
-        fmt.Println(bestGenome.traits[i].String())
-    }
+    fmt.Println("**************************")    
 }
 func (pop *Population) Append(genomes []*Genome) {
     for i := 0; i < len(genomes); i++ {
@@ -100,78 +98,55 @@ func (g *Genome) checkFitness(db *sql.DB, accountId int64, originalPerson *datab
 
     // adjust for the number of products 
     productCount := g.getProductsCount()    
-    if productCount == 0 {
-        countScore -= 10.0
-    } else if productCount < 5 {
-        countScore += 0.0
-    } else if productCount < 15 {
-        countScore += 5.0
-    } else if productCount < 25 {
-        countScore += 10.0
-    } else {
-        countScore -= 5.0
+    switch {
+    case productCount == 0:
+        countScore = 0.0
+    case productCount > 0 && productCount <= 5:
+        countScore = 5.0
+    case productCount > 5 && productCount <= 10:
+        countScore = 10.0
+    case productCount > 10 && productCount <= 20:
+        countScore = 15.0        
+    case productCount > 20 && productCount <= 50:
+        countScore = 0.0                
+    default:
+        countScore = -5.0
     }
 
-    convCh := make(chan float64)
-    seenCh := make(chan float64)
-    purchCh := make(chan float64)
-
     for _, prod := range g.rs.products {
-        go func(ch chan float64, db *sql.DB, accountId int64, prod *database.Product) {
-            score := float64(0.0)
-            conv := database.QueryGlobalConversion(db, accountId, prod)
-            switch {
-                case conv == 0.0:
-                    score = 0.0
-                case conv > 0.0 && conv <= 0.25:
-                    score = 1.0
-                case conv > 0.25 && conv <= 0.5:
-                    score = 3.0
-                case conv > 0.5 && conv <= 0.75:
-                    score = 4.0
-                default:
-                    score = 6.0
-            }
-            ch <- score
-        }(convCh, db, accountId, prod)
+        var score float64
 
-        go func(ch chan float64, db *sql.DB, accountId int64, person *database.Person, prod *database.Product) {
-            score := float64(0.0)
-            if database.HasProductBeenSeenByPerson(db, accountId, originalPerson, prod) {
+        score = float64(0.0)
+        conv := database.QueryGlobalConversion(db, accountId, prod)
+        switch {
+            case conv == 0.0:
                 score = 0.0
-            } else {
-                score = 0.5
-            }            
-            ch <- score
-        }(seenCh, db, accountId, originalPerson, prod)
+            case conv > 0.0 && conv <= 0.25:
+                score = 1.0
+            case conv > 0.25 && conv <= 0.5:
+                score = 3.0
+            case conv > 0.5 && conv <= 0.75:
+                score = 4.0
+            default:
+                score = 5.0
+        }
+        convScore += score
 
-        go func(ch chan float64, db *sql.DB, accountId int64, person *database.Person, prod *database.Product) {
-            score := float64(0.0)
-            if database.HasProductBeenPurchasedByPerson(db, accountId, originalPerson, prod) {
-                score = -5.0
-            }       
-            ch <- score
-        }(purchCh, db, accountId, originalPerson, prod)
+        score = float64(0.0)
+        if database.HasProductBeenSeenByPerson(db, accountId, originalPerson, prod) {
+            score = 0.0
+        } else {
+            score = 5.0
+        }            
+        seenScore += score
 
-        convDone := false
-        seenDone := false
-        purchDone := false
-        for {
-            if convDone && seenDone && purchDone {
-                break
-            }
-            select {
-                case s := <- convCh:
-                    convScore += s
-                    convDone = true
-                case s := <- seenCh:
-                    seenScore += s 
-                    seenDone = true           
-                case s := <- purchCh:
-                    purchScore += s
-                    purchDone = true                        
-            }
-        }        
+        score = float64(0.0)
+        if database.HasProductBeenPurchasedByPerson(db, accountId, originalPerson, prod) {
+            score = -10.0
+        } else {
+            score = 0.0
+        }       
+        purchScore += score
     }
 
     pCount := float64(g.getProductsCount())
@@ -221,10 +196,11 @@ func Evolve(maxPopulation int, maxGenerations int, accountId int64, monetateId s
 
     pop := makeRandomPopulation(maxPopulation, accountId, originalPerson)
 
+    db := database.OpenDB()
+    defer db.Close()
+
     for g := 0; g < maxGenerations; g++ {
         fmt.Printf("processing generation %d\n", g)
-
-        db := database.OpenDB()
 
         ch := make(chan bool)
         for i := 0; i < len(pop.genomes); i++ {
@@ -241,8 +217,6 @@ func Evolve(maxPopulation int, maxGenerations int, accountId int64, monetateId s
         }
         // drain the channel
         for i := 0; i < len(pop.genomes); i++ {<-ch}
-
-        db.Close()
 
         pop.Display()                
 

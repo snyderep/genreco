@@ -99,6 +99,7 @@ func QueryPeopleThatViewedProducts(db *sql.DB, accountId int64, products map[str
     query := strings.Join(s, " ") 
 
     stmt, err := db.Prepare(query)
+    defer stmt.Close()
     if err != nil {panic(err)}
 
     people = make([]*Person, 0)
@@ -135,6 +136,7 @@ func QueryProductsViewedByPeople(db *sql.DB, accountId int64, people map[string]
     query := strings.Join(s, " ") 
 
     stmt, err := db.Prepare(query)
+    defer stmt.Close()    
     if err != nil {panic(err)}
 
     products = make([]*Product, 0)
@@ -179,6 +181,7 @@ func QueryProductsPurchasedByPeople(db *sql.DB, accountId int64, people map[stri
     query := strings.Join(s, " ") 
 
     stmt, err := db.Prepare(query)
+    defer stmt.Close()    
     if err != nil {panic(err)}
 
     products = make([]*Product, 0)
@@ -235,6 +238,34 @@ func QueryRandomProduct(db *sql.DB, accountId int64, person *Person) (product *P
     query := strings.Join(s, " ") 
 
     row := db.QueryRow(query, accountId)
+    product = &Product{}
+    err := row.Scan(&product.AccountId, &product.Pid, &product.Name, &product.ProductUrl, &product.ImageUrl, 
+                    &product.UnitCost, &product.UnitPrice, &product.Margin, &product.MarginRate)
+    if err != nil {
+        if err == sql.ErrNoRows {
+            product = nil
+        } else {
+            panic(err)
+        }
+    } 
+
+    return
+}
+
+func QuerySoundAlikeProduct(db *sql.DB, accountId int64, inProduct *Product) (product *Product) {
+    s := []string{}
+
+    s = append(s, "SELECT")
+    s = append(s, "account_id, pid, name, product_url, image_url, unit_cost,")
+    s = append(s, "unit_price, margin, margin_rate")    
+    s = append(s, "FROM product")      
+    s = append(s, "WHERE account_id = $1")
+    s = append(s, "AND difference(name, $2) >= 3")    
+    s = append(s, "LIMIT 1")
+    
+    query := strings.Join(s, " ") 
+
+    row := db.QueryRow(query, accountId, inProduct.Name)
     product = &Product{}
     err := row.Scan(&product.AccountId, &product.Pid, &product.Name, &product.ProductUrl, &product.ImageUrl, 
                     &product.UnitCost, &product.UnitPrice, &product.Margin, &product.MarginRate)
