@@ -96,23 +96,23 @@ func (g *Genome) checkFitness(db *sql.DB, accountId int64, originalPerson *datab
     countScore := float64(0.0)
     convScore := float64(0.0)
     seenScore := float64(0.0)
+    purchScore := float64(0.0)
 
     // adjust for the number of products 
     productCount := g.getProductsCount()    
     if productCount == 0 {
         countScore -= 10.0
+    } else if productCount < 5 {
+        countScore += 0.0
     } else if productCount < 15 {
-        // fmt.Println("+= 5.0 for product count between 0 and 14")        
         countScore += 5.0
     } else if productCount < 25 {
-        // fmt.Println("+= 10.0 for product count between 15 and 24")
         countScore += 10.0
     } else {
-        // fmt.Println("-1.0 for product count >= 25")        
-        countScore += 3.0
+        countScore -= 5.0
     }
 
-    // adjust for global conversion and seen/unseen
+    // adjust for global conversion, seen/unseen and purchased/not purchased
     for _, prod := range g.rs.products {
         conv := database.QueryGlobalConversion(db, accountId, prod)
         if conv == 0.0 {
@@ -128,23 +128,41 @@ func (g *Genome) checkFitness(db *sql.DB, accountId int64, originalPerson *datab
         }
 
         if database.HasProductBeenSeenByPerson(db, accountId, originalPerson, prod) {
-            seenScore -= 0.5
+            seenScore -= 0.0
         } else {
-            seenScore += 1.0
+            seenScore += 0.5
         }
+        if database.HasProductBeenPurchasedByPerson(db, accountId, originalPerson, prod) {
+            purchScore -= 5.0
+        }       
     }
-    convScore = convScore / float64(g.getProductsCount())
-    seenScore = seenScore / float64(g.getProductsCount())
 
-    // adjust for seen/unseen 
+    pCount := float64(g.getProductsCount())
+    convScore = convScore / pCount
+    seenScore = seenScore / pCount
+    purchScore = purchScore / pCount
 
-
-    g.score = (countScore * 0.3) + (convScore * 0.5) + (seenScore * 0.2)
+    g.score = (countScore * 0.4) + (convScore * 0.2) + (seenScore * 0.1) + (purchScore * 0.3)
+}
+func (g *Genome) getCurrentTrait() (trait Trait) {
+    if len(g.traits) == 0 {
+        trait = nil
+    } else {
+        trait = g.traits[len(g.traits) - 1]
+    }
+    return
 }
 func (g *Genome) addRandomTrait() {
-    n := rand.Intn(len(allTraits))
-    t := allTraits[n]
-    g.traits = append(g.traits, t)        
+    var t Trait
+    traitsCount := len(allTraits)
+    for i := 0; i < traitsCount; i++ {
+        n := rand.Intn(traitsCount)
+        t = allTraits[n]
+        if t != g.getCurrentTrait() {
+            break
+        }
+    }
+    g.traits = append(g.traits, t)
 }
 func (g *Genome) getPeopleCount() (count int) {
     count = len(g.rs.people)
@@ -172,20 +190,27 @@ func Evolve(maxPopulation int, maxGenerations int, accountId int64, monetateId s
     for g := 0; g < maxGenerations; g++ {
         fmt.Printf("processing generation %d\n", g)
 
+        ch := make(chan bool, 4)
         for i := 0; i < len(pop.genomes); i++ {
-            // apply the update of the last (current) trait for each genome
-            genome := pop.genomes[i]
-            currentTrait := genome.traits[len(genome.traits) - 1]
-            currentTrait.update(genome.rs, accountId, originalPerson)            
-            genome.checkFitness(db, accountId, originalPerson)
+            go func(ch chan bool, genome *Genome) {
+                // apply the update of the last (current) trait for each genome
+                //genome := pop.genomes[i]
+                currentTrait := genome.traits[len(genome.traits) - 1]
+                currentTrait.update(genome.rs, accountId, originalPerson)            
+                genome.checkFitness(db, accountId, originalPerson)
+
+                ch <- true
+            }(ch, pop.genomes[i])
         }
+        // drain the channel
+        for i := 0; i < len(pop.genomes); i++ {<-ch}
 
         pop.Display()                
 
         if g == (maxGenerations - 1) {
             pop.DisplayFinal()
         } else {
-            // select genomes to carry forward to the next generation 
+            // select genomes to carry forward to the next generation             
             pop.makeSelection()
 
             // add new traits to the surviving genomes
@@ -262,18 +287,7 @@ func reproduce(oneGenome *Genome, anotherGenome *Genome) (childGenome *Genome) {
         if coin == 1 {childPeople[p.MonetateId] = p}
     }
 
-    for i := 0; i < len(oneGenome.traits); i++ {
-        coin := rand.Int31n(2)
-        if coin == 1 {childGenome.traits = append(childGenome.traits, oneGenome.traits[i])}
-    }
-    for i := 0; i < len(anotherGenome.traits); i++ {
-        coin := rand.Int31n(2)
-        if coin == 1 {childGenome.traits = append(childGenome.traits, anotherGenome.traits[i])}
-    }
-    // we have to have at least one trait
-    if len(childGenome.traits) == 0 {
-        childGenome.traits = append(childGenome.traits, &NopTrait{})
-    }
+    childGenome.traits = append(childGenome.traits, &NopTrait{})
 
     childGenome.rs = &RecoSet{products: childProducts, people: childPeople,}
 

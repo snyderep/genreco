@@ -93,8 +93,8 @@ func QueryPeopleThatViewedProducts(db *sql.DB, accountId int64, products map[str
     s = append(s, "SELECT DISTINCT monetate_id")
     s = append(s, "FROM user_product_views")
     s = append(s, "WHERE account_id = $1 AND pid = $2")
-    s = append(s, "AND RANDOM() < 0.05")    
-    s = append(s, "LIMIT 20")
+    s = append(s, "AND RANDOM() < 0.01")    
+    s = append(s, "LIMIT 2")
 
     query := strings.Join(s, " ") 
 
@@ -254,6 +254,33 @@ func HasProductBeenSeenByPerson(db *sql.DB, accountId int64, person *Person, pro
 
     s = append(s, "SELECT 'x'")
     s = append(s, "FROM user_product_views u JOIN product p ON (")        
+    s = append(s, "u.account_id = p.account_id AND")        
+    s = append(s, "u.pid = p.pid)")    
+    s = append(s, "WHERE u.account_id = $1 AND u.monetate_id = $2 AND u.pid = $3")
+    
+    query := strings.Join(s, " ") 
+
+    row := db.QueryRow(query, accountId, person.MonetateId, product.Pid)
+    var foo string
+    err := row.Scan(&foo)
+    if err == nil {
+        seen = true
+    } else {
+        if err == sql.ErrNoRows {
+            seen = false
+        } else {
+            panic(err)
+        }
+    } 
+
+    return
+}
+
+func HasProductBeenPurchasedByPerson(db *sql.DB, accountId int64, person *Person, product *Product) (seen bool) {
+    s := []string{}
+
+    s = append(s, "SELECT 'x'")
+    s = append(s, "FROM user_product_purchases u JOIN product p ON (")        
     s = append(s, "u.account_id = p.account_id AND")        
     s = append(s, "u.pid = p.pid)")    
     s = append(s, "WHERE u.account_id = $1 AND u.monetate_id = $2 AND u.pid = $3")

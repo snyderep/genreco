@@ -1,6 +1,7 @@
 package gene
 
 import (
+    "math/rand"
     "github.com/snyderep/recogen/database"
 )
 
@@ -13,10 +14,11 @@ type Trait interface {
 var allTraits []Trait;
 
 func init() {
-    // allTraits = append(allTraits, &NopTrait{})
+    allTraits = append(allTraits, &NopTrait{})
     allTraits = append(allTraits, &PeopleThatViewedProductsTrait{})
     allTraits = append(allTraits, &ProductsViewedByPeopleTrait{})  
     allTraits = append(allTraits, &RandomProductTrait{})
+    allTraits = append(allTraits, &RandomProductDeleteTrait{})
 }
 
 type NopTrait struct {}
@@ -36,9 +38,12 @@ func (t *PeopleThatViewedProductsTrait) update(rs *RecoSet, accountId int64, ori
     defer db.Close()
 
     people := database.QueryPeopleThatViewedProducts(db, accountId, rs.products)
+    peeps := make(map[string]*database.Person)
     for i := 0; i < len(people); i++ {
-        rs.people[people[i].MonetateId] = people[i]
+        //rs.people[people[i].MonetateId] = people[i]
+        peeps[people[i].MonetateId] = people[i]
     }
+    rs.people = peeps
 }
 
 type ProductsViewedByPeopleTrait struct {}
@@ -66,5 +71,16 @@ func (t *RandomProductTrait) update(rs *RecoSet, accountId int64, origPerson *da
     product := database.QueryRandomProduct(db, accountId, origPerson)
     if product != nil {
         rs.products[product.Pid] = product
+    }
+}
+
+type RandomProductDeleteTrait struct {}
+func (t *RandomProductDeleteTrait) String() (string) {
+    return "random product delete"
+}
+func (t *RandomProductDeleteTrait) update(rs *RecoSet, accountId int64, origPerson *database.Person) {
+    for pid, _ := range rs.products {
+        coin := rand.Intn(10)
+        if coin == 0 {delete(rs.products, pid)}
     }
 }
