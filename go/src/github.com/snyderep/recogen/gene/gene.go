@@ -16,6 +16,53 @@ func init() {
 type Population struct {
     genomes []*Genome
 }
+func (pop *Population) evolve(maxPopulation int, maxGenerations int, accountId int64, 
+    originalPerson *database.Person) {
+
+    db := database.OpenDB()
+    defer db.Close()
+
+    for g := 0; g < maxGenerations; g++ {
+        fmt.Printf("processing generation %d\n", g)
+
+        ch := make(chan bool)
+        for i := 0; i < len(pop.genomes); i++ {
+            go func(ch chan bool, genome *Genome) {
+                // apply the update of the last (current) trait a genome                
+                genome.getCurrentTrait().update(genome.rs, accountId, originalPerson) 
+                genome.checkFitness(db, accountId, originalPerson)
+
+                ch <- true
+            }(ch, pop.genomes[i])
+        }
+        // drain the channel
+        for i := 0; i < len(pop.genomes); i++ {<-ch}
+
+        pop.display()                
+
+        if g == (maxGenerations - 1) {
+            pop.displayFinal()
+        } else {
+            // select genomes to carry forward to the next generation             
+            pop.makeSelection()
+
+            // add new traits to the surviving genomes
+            for i := 0; i < len(pop.genomes); i++ {
+                pop.genomes[i].addRandomTrait()
+            }        
+
+            // have the successful ones reproduce to fill out the remainder of the population
+            childrenGenomes := make([]*Genome, 0)
+            for i := 0; i < (maxPopulation - len(pop.genomes)); i++ {
+                r1 := rand.Intn(len(pop.genomes))
+                r2 := rand.Intn(len(pop.genomes))
+                newGenome := reproduce(pop.genomes[r1], pop.genomes[r2])
+                childrenGenomes = append(childrenGenomes, newGenome)
+            }
+            pop.appendGenomes(childrenGenomes)
+        }
+    }    
+}
 // cheesy tournament selection - we consider everyone to be in the tournament.
 // Alternatively we could select a random number of genomes from the population
 // and select the fittest among those.
@@ -48,14 +95,14 @@ func (pop *Population) makeSelection() {
 
     pop.genomes = selectedGenomes
 }
-func (pop *Population) Display() {
+func (pop *Population) display() {
     for i := 0; i < len(pop.genomes); i++ {
         genome := pop.genomes[i]
-        fmt.Printf("genome %d, score: %f, people: %d, products: %d\n", i, genome.score, 
-            genome.getPeopleCount(), genome.getProductsCount())
+        fmt.Printf("genome %d, score: %f, products: %d\n", i, genome.score, 
+            genome.getProductsCount())
     }
 }
-func (pop *Population) GetHighestScoringGenome() (bestGenome *Genome) {
+func (pop *Population) getHighestScoringGenome() (bestGenome *Genome) {
     for i := 0; i < len(pop.genomes); i++ {
         genome := pop.genomes[i]
         if bestGenome == nil || genome.score > bestGenome.score {
@@ -64,17 +111,17 @@ func (pop *Population) GetHighestScoringGenome() (bestGenome *Genome) {
     }
     return
 }
-func (pop *Population) DisplayFinal() {
+func (pop *Population) displayFinal() {
     fmt.Println("********** DONE **********")
 
-    bestGenome := pop.GetHighestScoringGenome()
+    bestGenome := pop.getHighestScoringGenome()
     for _, product := range bestGenome.getProducts() {
         fmt.Println(product.String())
+        fmt.Println("**************************")    
     }
     fmt.Printf("Score: %f\n", bestGenome.score)
-    fmt.Println("**************************")    
 }
-func (pop *Population) Append(genomes []*Genome) {
+func (pop *Population) appendGenomes(genomes []*Genome) {
     for i := 0; i < len(genomes); i++ {
         pop.genomes = append(pop.genomes, genomes[i])
     }        
@@ -191,57 +238,11 @@ func (g * Genome) getProducts() (products map[string]*database.Product) {
     return g.rs.products
 }
 
-func Evolve(maxPopulation int, maxGenerations int, accountId int64, monetateId string) {
+func Run(maxPopulation int, maxGenerations int, accountId int64, monetateId string) {
     originalPerson := &database.Person{monetateId}
 
     pop := makeRandomPopulation(maxPopulation, accountId, originalPerson)
-
-    db := database.OpenDB()
-    defer db.Close()
-
-    for g := 0; g < maxGenerations; g++ {
-        fmt.Printf("processing generation %d\n", g)
-
-        ch := make(chan bool)
-        for i := 0; i < len(pop.genomes); i++ {
-            go func(ch chan bool, genome *Genome) {
-                //currentTrait := genome.traits[len(genome.traits) - 1]                
-
-                // apply the update of the last (current) trait a genome                
-                genome.getCurrentTrait().update(genome.rs, accountId, originalPerson) 
-
-                genome.checkFitness(db, accountId, originalPerson)
-
-                ch <- true
-            }(ch, pop.genomes[i])
-        }
-        // drain the channel
-        for i := 0; i < len(pop.genomes); i++ {<-ch}
-
-        pop.Display()                
-
-        if g == (maxGenerations - 1) {
-            pop.DisplayFinal()
-        } else {
-            // select genomes to carry forward to the next generation             
-            pop.makeSelection()
-
-            // add new traits to the surviving genomes
-            for i := 0; i < len(pop.genomes); i++ {
-                pop.genomes[i].addRandomTrait()
-            }        
-
-            // have the successful ones reproduce to fill out the remainder of the population
-            childrenGenomes := make([]*Genome, 0)
-            for i := 0; i < (maxPopulation - len(pop.genomes)); i++ {
-                r1 := rand.Intn(len(pop.genomes))
-                r2 := rand.Intn(len(pop.genomes))
-                newGenome := reproduce(pop.genomes[r1], pop.genomes[r2])
-                childrenGenomes = append(childrenGenomes, newGenome)
-            }
-            pop.Append(childrenGenomes)
-        }
-    }
+    pop.evolve(maxPopulation, maxGenerations, accountId, originalPerson)
 }
 
 func makeRandomPopulation(size int, accountId int64, originalPerson *database.Person) (pop *Population) {
