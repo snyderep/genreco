@@ -1,90 +1,89 @@
 package database
 
 import (
-	"database/sql"
-    //"fmt"
+    "database/sql"
     "strings"
-	_ "github.com/bmizerany/pq"
+    _ "github.com/bmizerany/pq"
 )
 
 func deleteAllProducts(trans *sql.Tx) (err error) {
-	_, err = trans.Exec("DELETE FROM product")
-	return
+    _, err = trans.Exec("DELETE FROM product")
+    return
 }
 func deleteAllUserProductViews(trans *sql.Tx) (err error) {
-	_, err = trans.Exec("DELETE FROM user_product_views")
-	return
+    _, err = trans.Exec("DELETE FROM user_product_views")
+    return
 }
 func deleteAllUserProductPurchases(trans *sql.Tx) (err error) {
-	_, err = trans.Exec("DELETE FROM user_product_purchases")
-	return
+    _, err = trans.Exec("DELETE FROM user_product_purchases")
+    return
 }
 func deleteAllProductConversionRates(trans *sql.Tx) (err error) {
-	_, err = trans.Exec("DELETE FROM product_conversion_rate")
-	return
+    _, err = trans.Exec("DELETE FROM product_conversion_rate")
+    return
 }
 
 func getInsertProductStmt(trans *sql.Tx) (stmt *sql.Stmt) {
-	// note that postgresql uses $1, $2, etc while others use ?
-	s := "INSERT INTO product (account_id, pid, name, product_url, image_url, unit_cost, " +
-		"unit_price, margin, margin_rate) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)"
-	var err error
-	stmt, err = trans.Prepare(s)
-	if err != nil {
-		panic(err)
-	}
-	return
+    // note that postgresql uses $1, $2, etc while others use ?
+    s := "INSERT INTO product (account_id, pid, name, product_url, image_url, unit_cost, " +
+        "unit_price, margin, margin_rate) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)"
+    var err error
+    stmt, err = trans.Prepare(s)
+    if err != nil {
+        panic(err)
+    }
+    return
 }
 func getInsertUserProductViewStmt(trans *sql.Tx) (stmt *sql.Stmt) {
-	// note that postgresql uses $1, $2, etc while others use ?
-	s := "INSERT INTO user_product_views (account_id, monetate_id, pid, count) " +
-		"VALUES ($1, $2, $3, $4)"
-	var err error
-	stmt, err = trans.Prepare(s)
-	if err != nil {
-		panic(err)
-	}
-	return
+    // note that postgresql uses $1, $2, etc while others use ?
+    s := "INSERT INTO user_product_views (account_id, monetate_id, pid, count) " +
+        "VALUES ($1, $2, $3, $4)"
+    var err error
+    stmt, err = trans.Prepare(s)
+    if err != nil {
+        panic(err)
+    }
+    return
 }
 func getInsertUserProductPurchaseStmt(trans *sql.Tx) (stmt *sql.Stmt) {
-	// note that postgresql uses $1, $2, etc while others use ?
-	s := "INSERT INTO user_product_purchases (account_id, monetate_id, pid, count) " +
-		"VALUES ($1, $2, $3, $4)"
-	var err error
-	stmt, err = trans.Prepare(s)
-	if err != nil {
-		panic(err)
-	}
-	return
+    // note that postgresql uses $1, $2, etc while others use ?
+    s := "INSERT INTO user_product_purchases (account_id, monetate_id, pid, count) " +
+        "VALUES ($1, $2, $3, $4)"
+    var err error
+    stmt, err = trans.Prepare(s)
+    if err != nil {
+        panic(err)
+    }
+    return
 }
 func getInsertProductConversionRateStmt(trans *sql.Tx) (stmt *sql.Stmt) {
-	// note that postgresql uses $1, $2, etc while others use ?
-	s := "INSERT INTO product_conversion_rate (account_id, pid, conversion_rate) " +
-		"VALUES ($1, $2, $3)"
-	var err error
-	stmt, err = trans.Prepare(s)
-	if err != nil {
-		panic(err)
-	}
-	return
+    // note that postgresql uses $1, $2, etc while others use ?
+    s := "INSERT INTO product_conversion_rate (account_id, pid, conversion_rate) " +
+        "VALUES ($1, $2, $3)"
+    var err error
+    stmt, err = trans.Prepare(s)
+    if err != nil {
+        panic(err)
+    }
+    return
 }
 
 func insertProduct(stmt *sql.Stmt, p *Product) (err error) {
-	_, err = stmt.Exec(p.AccountId, p.Pid, p.Name, p.ProductUrl, p.ImageUrl,
-		p.UnitCost, p.UnitPrice, p.Margin, p.MarginRate)
-	return
+    _, err = stmt.Exec(p.AccountId, p.Pid, p.Name, p.ProductUrl, p.ImageUrl,
+        p.UnitCost, p.UnitPrice, p.Margin, p.MarginRate)
+    return
 }
 func insertUserProduct(stmt *sql.Stmt, accountId int64, monetateId string, pid string,
-	count int64) (err error) {
+    count int64) (err error) {
 
-	_, err = stmt.Exec(accountId, monetateId, pid, count)
-	return
+    _, err = stmt.Exec(accountId, monetateId, pid, count)
+    return
 }
 func insertProductConversionRate(stmt *sql.Stmt, accountId int64, pid string, 
     conversionRate float64) (err error) {
 
-	_, err = stmt.Exec(accountId, pid, conversionRate)
-	return
+    _, err = stmt.Exec(accountId, pid, conversionRate)
+    return
 }
 
 func QueryPeopleThatViewedProducts(db *sql.DB, accountId int64, products map[string]*Product) (people []*Person) {
@@ -357,9 +356,9 @@ func QueryGlobalConversion(db *sql.DB, accountId int64, product *Product) (conve
 }
 
 func OpenDB() (db *sql.DB) {
-	db, err := sql.Open("postgres", "dbname=recogen sslmode=disable")
-	if err == nil {
-		return
-	}
-	panic(err)
+    db, err := sql.Open("postgres", "dbname=recogen sslmode=disable")
+    if err == nil {
+        return
+    }
+    panic(err)
 }
