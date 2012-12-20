@@ -112,29 +112,66 @@ func (g *Genome) checkFitness(db *sql.DB, accountId int64, originalPerson *datab
         countScore -= 5.0
     }
 
-    // adjust for global conversion, seen/unseen and purchased/not purchased
-    for _, prod := range g.rs.products {
-        conv := database.QueryGlobalConversion(db, accountId, prod)
-        if conv == 0.0 {
-            convScore += 0.0
-        } else if conv <= 0.25 {
-            convScore += 1.0 
-        } else if conv <= 0.5 {
-            convScore += 3.0
-        } else if conv <= 0.75 {
-            convScore += 4.0
-        } else {
-            convScore += 6.0
-        }
+    convCh := make(chan float64)
+    seenCh := make(chan float64)
+    purchCh := make(chan float64)
 
-        if database.HasProductBeenSeenByPerson(db, accountId, originalPerson, prod) {
-            seenScore -= 0.0
-        } else {
-            seenScore += 0.5
-        }
-        if database.HasProductBeenPurchasedByPerson(db, accountId, originalPerson, prod) {
-            purchScore -= 5.0
-        }       
+    for _, prod := range g.rs.products {
+        go func(ch chan float64, db *sql.DB, accountId int64, prod *database.Product) {
+            score := float64(0.0)
+            conv := database.QueryGlobalConversion(db, accountId, prod)
+            switch {
+                case conv == 0.0:
+                    score = 0.0
+                case conv > 0.0 && conv <= 0.25:
+                    score = 1.0
+                case conv > 0.25 && conv <= 0.5:
+                    score = 3.0
+                case conv > 0.5 && conv <= 0.75:
+                    score = 4.0
+                default:
+                    score = 6.0
+            }
+            ch <- score
+        }(convCh, db, accountId, prod)
+
+        go func(ch chan float64, db *sql.DB, accountId int64, person *database.Person, prod *database.Product) {
+            score := float64(0.0)
+            if database.HasProductBeenSeenByPerson(db, accountId, originalPerson, prod) {
+                score = 0.0
+            } else {
+                score = 0.5
+            }            
+            ch <- score
+        }(seenCh, db, accountId, originalPerson, prod)
+
+        go func(ch chan float64, db *sql.DB, accountId int64, person *database.Person, prod *database.Product) {
+            score := float64(0.0)
+            if database.HasProductBeenPurchasedByPerson(db, accountId, originalPerson, prod) {
+                score = -5.0
+            }       
+            ch <- score
+        }(purchCh, db, accountId, originalPerson, prod)
+
+        convDone := false
+        seenDone := false
+        purchDone := false
+        for {
+            if convDone && seenDone && purchDone {
+                break
+            }
+            select {
+                case s := <- convCh:
+                    convScore += s
+                    convDone = true
+                case s := <- seenCh:
+                    seenScore += s 
+                    seenDone = true           
+                case s := <- purchCh:
+                    purchScore += s
+                    purchDone = true                        
+            }
+        }        
     }
 
     pCount := float64(g.getProductsCount())
@@ -184,19 +221,19 @@ func Evolve(maxPopulation int, maxGenerations int, accountId int64, monetateId s
 
     pop := makeRandomPopulation(maxPopulation, accountId, originalPerson)
 
-    db := database.OpenDB()
-    defer db.Close()
-
     for g := 0; g < maxGenerations; g++ {
         fmt.Printf("processing generation %d\n", g)
 
-        ch := make(chan bool, 4)
+        db := database.OpenDB()
+
+        ch := make(chan bool)
         for i := 0; i < len(pop.genomes); i++ {
             go func(ch chan bool, genome *Genome) {
-                // apply the update of the last (current) trait for each genome
-                //genome := pop.genomes[i]
-                currentTrait := genome.traits[len(genome.traits) - 1]
-                currentTrait.update(genome.rs, accountId, originalPerson)            
+                //currentTrait := genome.traits[len(genome.traits) - 1]                
+
+                // apply the update of the last (current) trait a genome                
+                genome.getCurrentTrait().update(genome.rs, accountId, originalPerson) 
+
                 genome.checkFitness(db, accountId, originalPerson)
 
                 ch <- true
@@ -204,6 +241,8 @@ func Evolve(maxPopulation int, maxGenerations int, accountId int64, monetateId s
         }
         // drain the channel
         for i := 0; i < len(pop.genomes); i++ {<-ch}
+
+        db.Close()
 
         pop.Display()                
 
